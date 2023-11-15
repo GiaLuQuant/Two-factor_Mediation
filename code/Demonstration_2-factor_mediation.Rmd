@@ -1,0 +1,122 @@
+---
+title: "EmpiricalExample"
+author: "Zhiming Lu"
+date: "2023-11-01"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+## Notations
+```{r}
+###########################################
+#  X: the independent variable            #
+#  M: the measurement of the mediator     #
+#  Dm: the manipulation of the mediator   #
+#  Y: the dependent variable              #
+###########################################
+```
+
+
+## Loading packages
+```{r}
+library('haven')
+library('janitor')
+library('lavaan')
+library('mediation')
+library('ggplot2')
+```
+
+
+## Reading data from the M&H study
+```{r warning=FALSE}
+rawdata = read_sav('/Users/luzhiming/000我/sysu/自己/主要/EM/importantApplied/illustration/Illu2.sav')
+rawdata = data.frame(rawdata)
+```
+
+
+## Preprocessing
+```{r warning=FALSE}
+# effect coding as 0.5 and -0.5
+rawdata$Gender = rawdata$Gender-1.5; rawdata$Perf = rawdata$Perf-1.5
+data = data.frame(X = rawdata$Gender, Dm = rawdata$Perf, M = rawdata$CEOperf, Y = rawdata$Jobfit)
+
+# standardization
+data$M = scale(data$M); data$Y = scale(data$Y)
+
+# interaction terms
+data$XDm = data$X*data$Dm; data$XM = data$X*data$M
+```
+
+
+## Two-way ANOVA
+```{r}
+anava.std = aov(Y~X*Dm, data)
+summary(anava.std)
+```
+
+
+## Imai's modeling approahch (Imai et al., 2013), as expressed in Equations 4 and 5
+```{r}
+m1.med = lm(M~X+Dm, data = data)
+m2.med = lm(Y~X*M, data = data)
+
+# the mediation function from the "mediation" package
+fit.med = mediate(model.m = m1.med, model.y = m2.med, treat = "X", mediator = "M", control.value = -0.5, treat.value = 0.5)  
+summary(fit.med)
+```
+
+
+## The recommended modeling approach (Equations 6 & 7)
+```{r}
+# the model (Equations 6 & 7)
+model = 'M~a*X+d*Dm+h*XDm
+         Y~cp*X+b*M+g*XM'
+
+
+# fitting the model using the sem function (from the "lavaan" package)
+fit = sem(model=model, data=data)  
+summary(fit)
+
+
+# extracting the variance-covariance matrix
+covs = vcov(fit)
+
+IE.vcov = matrix(c(covs['a','a'], covs['a','b'], covs['a','g'], covs['a','h'], covs['a','b'], covs['b','b'], covs['b','g'], covs['b','h'], covs['a','g'], covs['b','g'], covs['g','g'], covs['g','h'], covs['a','h'], covs['b','h'], covs['g','h'], covs['h','h']),4,4)
+
+
+# computing natural indirect effect (NIE) estimates (using Equation 9)
+IE.est.UPNIE = (coef(fit)['a']-0.5*coef(fit)['h'])*(coef(fit)['b']-0.5*coef(fit)['g'])
+IE.est.APNIE = (coef(fit)['a']+0.5*coef(fit)['h'])*(coef(fit)['b']-0.5*coef(fit)['g'])
+IE.est.UTNIE = (coef(fit)['a']-0.5*coef(fit)['h'])*(coef(fit)['b']+0.5*coef(fit)['g'])
+IE.est.ATNIE = (coef(fit)['a']+0.5*coef(fit)['h'])*(coef(fit)['b']+0.5*coef(fit)['g'])
+
+
+# computing the standard error estimates of the NIEs
+delta.f.XnDn = matrix(c((coef(fit)['b']-0.5*coef(fit)['g']), (coef(fit)['a']-0.5*coef(fit)['h']),(-.5*coef(fit)['a']+.25*coef(fit)['h']), (-.5*coef(fit)['b']+.25*coef(fit)['g'])), 4, 1)
+delta.f.XnDp = matrix(c((coef(fit)['b']-0.5*coef(fit)['g']), (coef(fit)['a']+0.5*coef(fit)['h']),(-.5*coef(fit)['a']-.25*coef(fit)['h']), (.5*coef(fit)['b']-.25*coef(fit)['g'])), 4, 1)
+delta.f.XpDn = matrix(c((coef(fit)['b']+0.5*coef(fit)['g']), (coef(fit)['a']-0.5*coef(fit)['h']),                           (.5*coef(fit)['a']-.25*coef(fit)['h']), (-.5*coef(fit)['b']-.25*coef(fit)['g'])), 4, 1)
+delta.f.XpDp = matrix(c((coef(fit)['b']+0.5*coef(fit)['g']), (coef(fit)['a']+0.5*coef(fit)['h']),(.5*coef(fit)['a']+.25*coef(fit)['h']), (.5*coef(fit)['b']+.25*coef(fit)['g'])), 4, 1)
+        
+
+UPNIE.SEest = sqrt(t(delta.f.XnDn) %*% IE.vcov %*% delta.f.XnDn)
+APNIE.SEest = sqrt(t(delta.f.XnDp) %*% IE.vcov %*% delta.f.XnDp)
+UTNIE.SEest = sqrt(t(delta.f.XpDn) %*% IE.vcov %*% delta.f.XpDn)
+ATNIE.SEest = sqrt(t(delta.f.XpDp) %*% IE.vcov %*% delta.f.XpDp)
+       
+
+# computing p-values 
+p.UPNIE = 1-pnorm(abs(IE.est.UPNIE)/UPNIE.SEest)
+p.APNIE = 1-pnorm(abs(IE.est.APNIE)/APNIE.SEest)
+p.UTNIE = 1-pnorm(abs(IE.est.UTNIE)/UTNIE.SEest)
+p.ATNIE = 1-pnorm(abs(IE.est.ATNIE)/ATNIE.SEest)
+
+p.UPNIE; p.APNIE; p.UTNIE; p.ATNIE
+
+```
+
+
+
+
+
