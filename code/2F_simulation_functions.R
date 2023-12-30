@@ -113,7 +113,7 @@ TradMed <- function(data, g){
   models = list(m1 = lm(M~X*Dm,data), m2 = lm(Y~X*M,data))
   fit = try(mediate(models$m1,models$m2,treat='X',mediator='M', sims=1000, treat.value = 0.5, control.value = -0.5), silent=T)
   if (inherits(fit, 'try-error')){
-    res = rep(NA,16)
+    res = rep(NA,8)
   }else{
     sum=summary(fit)
     IE = c(sum$d0, sum$d1)
